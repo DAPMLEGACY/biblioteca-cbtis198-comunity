@@ -283,10 +283,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
             <input type="text"  id="newColorText"   placeholder="o escribe el color (ej. royalblue, #2d4a3e)">
           </div>
           <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem;">Reseña del libro</label>
-          <div class="resena-gen-row">
-            <textarea id="newResena" placeholder="Escribe o genera una reseña con IA..."></textarea>
-            <button class="btn-ai" id="btnGenerarResena">✨ Generar con IA</button>
-          </div>
+          <textarea id="newResena" placeholder="Escribe una reseña del libro (opcional)..." style="width:100%;padding:.55rem .85rem;border:1px solid var(--border);border-radius:7px;font-family:'DM Sans',sans-serif;font-size:.9rem;background:var(--surface);color:var(--text);resize:vertical;min-height:80px;margin-bottom:.75rem;"></textarea>
           <button class="btn-primary" id="btnAgregar">Agregar libro</button>
         </div>
       </div>
@@ -417,9 +414,6 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
-
-/* URL del proxy PHP */
-const RESENA_API_URL = './api/Resena.php';
 
 let books = [], loanHistory = [], pendingLoanId = null, lastLoanData = null;
 let chartGeneros = null, chartMensual = null, chartPopulares = null;
@@ -590,24 +584,6 @@ function renderActivity() {
       <div class="ai-date">${h.action==='prestado'?h.loanDate||'':h.returnDate||''}</div>
     </div>`).join('');
 }
-
-/* ══ GENERAR RESEÑA IA ══ */
-document.getElementById('btnGenerarResena').addEventListener('click', async () => {
-  const title  = document.getElementById('newTitle').value.trim();
-  const author = document.getElementById('newAuthor').value.trim();
-  const genre  = document.getElementById('newGenre').value.trim();
-  if (!title || !author) { showToast('Escribe el título y autor primero.', 'err'); return; }
-  const btn = document.getElementById('btnGenerarResena');
-  setBtnLoading(btn, true, '✨ Generando...');
-  try {
-    const res  = await fetch(RESENA_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title, author, genre }) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.resena) { document.getElementById('newResena').value = data.resena; showToast('✅ Reseña generada.'); }
-    else showToast('No se pudo generar la reseña.', 'err');
-  } catch(e) { console.error('[generarResena]', e); showToast('❌ Error al generar la reseña.', 'err'); }
-  finally { setBtnLoading(btn, false, '✨ Generar con IA'); }
-});
 
 /* ══ AGREGAR LIBRO ══ */
 document.getElementById('btnAgregar').addEventListener('click', async () => {
