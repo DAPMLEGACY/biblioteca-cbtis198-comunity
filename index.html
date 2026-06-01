@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biblioteca CBTis 198</title>
+
+<!-- Fuentes -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="coyotes.png">
+
+<!-- Hoja de estilos separada -->
+<link rel="stylesheet" href="Style.css">
+
+<!-- Librerías de exportación (sin defer: deben estar listas al usarlas) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+<!-- Área de impresión (oculta; solo al imprimir) -->
+<div id="printArea"></div>
+
+<!-- Toast de notificaciones -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════
+     MODAL: DETALLE / RESEÑA DEL LIBRO
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="bookDetailModal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="modal book-detail-modal">
+    <div class="book-detail-spine" id="detailSpine">
+      <h2 id="detailTitle"></h2>
+    </div>
+    <div class="book-detail-meta" id="detailMeta"></div>
+    <p class="isbn-chip"        id="detailISBN"></p>
+    <div                         id="detailResena"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="closeDetailBtn">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <div class="logo-box">
+      <img src="coyotes.png" alt="Escudo CBTis 198">
+    </div>
+    <div>
+      <h1>📚 Biblioteca CBTis 198</h1>
+      <span>Biblioteca Digital Escolar</span>
+    </div>
+  </div>
+</header>
+
+
+
+<!-- ══════════════════════════════════════════
+     BARRA DE BÚSQUEDA Y FILTROS
+══════════════════════════════════════════ -->
+<div class="search-bar" role="search">
+  <input type="text" id="searchInput"
+         placeholder="🔍 Buscar por título, autor o ISBN..."
+         aria-label="Buscar libros">
+
+  <select id="filterStatus" aria-label="Filtrar por estado">
+    <option value="all">Todos</option>
+    <option value="disponible">Disponibles</option>
+    <option value="prestado">En préstamo</option>
+  </select>
+
+  <select id="filterGenre" aria-label="Filtrar por género">
+    <option value="all">Todos los géneros</option>
+  </select>
+
+  <select class="sort-select" id="sortBy" aria-label="Ordenar por">
+    <option value="title">Título A-Z</option>
+    <option value="title-desc">Título Z-A</option>
+    <option value="author">Autor A-Z</option>
+    <option value="year-desc">Más reciente</option>
+    <option value="year-asc">Más antiguo</option>
+  </select>
+</div>
+
+<!-- ══════════════════════════════════════════
+     CONTENIDO PRINCIPAL
+══════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- Alerta de red -->
+  <div class="error-network" id="networkError" role="alert">
+    ⚠️ Sin conexión con la base de datos. Verifica tu internet.
+  </div>
+
+  <h2 class="section-title">Catálogo</h2>
+
+  <!-- Estadísticas -->
+  <div class="stats" id="stats" aria-live="polite"></div>
+
+  <!-- Grid de libros + paginación -->
+  <div class="books-grid" id="booksGrid" role="list">
+    <div class="loading-msg">⏳ Cargando libros...</div>
+  </div>
+  <div class="pagination" id="pagination"></div>
+
+  <div class="admin-toggle">
+    <button class="admin-toggle-btn" id="adminToggleBtn">
+      🔐 Acceso Administrador
+    </button>
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT PRINCIPAL (módulo ES)
+══════════════════════════════════════════ -->
+<script type="module">
+
+/* ── Imports Firebase ── */
+import { initializeApp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, onSnapshot, updateDoc, doc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+import {
+  isValidColor, today, isOverdue, estadoVencimiento,
+  copiasDisponibles, esc, rgbToHex, showToast
+} from './Validaciones.js';
+
+/* ══════════════════════════════
+   CONFIGURACIÓN FIREBASE
+══════════════════════════════ */
+const firebaseConfig = {
+  apiKey:            "AIzaSyCsmsvkh_fAua8PnmKVyv2hOiHYnlm16Mg",
+  authDomain:        "libreriacbtis198.firebaseapp.com",
+  projectId:         "libreriacbtis198",
+  storageBucket:     "libreriacbtis198.firebasestorage.app",
+  messagingSenderId: "629699951264",
+  appId:             "1:629699951264:web:b15799c447903b880367c5"
+};
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+/* URL del proxy PHP que oculta la API Key de Anthropic */
+const RESENA_API_URL = './api/Resena.php';
+
+/* ══════════════════════════════
+   ESTADO GLOBAL
+══════════════════════════════ */
+let books       = [];
+
+/* Paginación */
+const PAGE_SIZE = 20;
+let currentPage = 1;
+let filteredBooks = [];
+
+/* Importación */
+let importRows = [];
+
+/* Año máximo dinámico */
+document.getElementById('newYear').max = new Date().getFullYear() + 1;
+
+/* ══════════════════════════════
+   COLOR PICKER SINCRONIZADO
+══════════════════════════════ */
+document.getElementById('newColorPicker').addEventListener('input', e => {
+  document.getElementById('newColorText').value = e.target.value;
+});
+document.getElementById('newColorText').addEventListener('input', e => {
+  const val = e.target.value.trim();
+  if (val && isValidColor(val)) {
+    const h = rgbToHex(val);
+    if (h) document.getElementById('newColorPicker').value = h;
+  }
+});
+
+
+
+document.getElementById('adminToggleBtn').addEventListener('click', () => {
+  window.location.href = 'admin.html';
+});
+
+/* ══════════════════════════════
+   FIRESTORE: ESCUCHA EN TIEMPO REAL
+══════════════════════════════ */
+onSnapshot(collection(db, "books"), snap => {
+  books = snap.docs.map(d => ({ firebaseId: d.id, ...d.data() }));
+  refresh();
+}, () => {
+  document.getElementById('networkError').classList.add('visible');
+});
+
+
+
+/* ══════════════════════════════
+   RESEÑA CON IA — via proxy PHP (oculta la API Key del cliente)
+══════════════════════════════ */
+async function generarResena(title, author, genre) {
+  const response = await fetch(RESENA_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, author, genre })
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  return data.resena?.trim() || '';
+}
+
+document.getElementById('btnGenerarResena').addEventListener('click', async () => {
+  const title  = document.getElementById('newTitle').value.trim();
+  const author = document.getElementById('newAuthor').value.trim();
+  const genre  = document.getElementById('newGenre').value.trim();
+  if (!title || !author) { showToast('Escribe el título y autor primero.', 'err'); return; }
+
+  const btn = document.getElementById('btnGenerarResena');
+  setBtnLoading(btn, true, '✨ Generando...');
+  try {
+    const text = await generarResena(title, author, genre);
+    if (text) { document.getElementById('newResena').value = text; showToast('✅ Reseña generada.'); }
+    else showToast('No se pudo generar la reseña.', 'err');
+  } catch (e) {
+    showToast('❌ Error al generar la reseña.', 'err');
+  } finally {
+    setBtnLoading(btn, false, '✨ Generar con IA');
+  }
+});
+
+/* ══════════════════════════════
+   MODAL: DETALLE / RESEÑA (con generación automática de reseña)
+══════════════════════════════ */
+window.openBookDetail = async function (firebaseId) {
+  const b = books.find(x => x.firebaseId === firebaseId);
+  if (!b) return;
+
+  const colorSeguro = isValidColor(b.color) ? b.color : '#008f39';
+  document.getElementById('detailSpine').style.background = colorSeguro;
+  document.getElementById('detailTitle').textContent      = b.title;
+  document.getElementById('detailISBN').textContent       = b.isbn ? `ISBN: ${b.isbn}` : '';
+
+  const ov  = isOverdue(b);
+  const bc  = b.status === 'disponible' ? 'badge-avail' : (ov ? 'badge-overdue' : 'badge-lend');
+  const bt  = b.status === 'disponible' ? '✓ Disponible' : (ov ? '⚠️ Vencido' : '⏳ En préstamo');
+  const { disponibles, total } = copiasDisponibles(books, b);
+
+  document.getElementById('detailMeta').innerHTML = `
+    <div><strong>${esc(b.author)}</strong></div>
+    <div>${esc(b.genre)} · ${b.year}</div>
+    ${total > 1 ? `<div>📦 ${disponibles}/${total} copias disponibles</div>` : ''}
+    <span class="badge ${bc}" style="margin-top:.4rem;">${bt}</span>`;
+
+  const resenaDiv = document.getElementById('detailResena');
+
+  if (b.resena && b.resena !== 'FAILED') {
+    resenaDiv.innerHTML = `<p style="font-size:.88rem;line-height:1.6;color:var(--muted);margin-top:.75rem;">${esc(b.resena)}</p>`;
+  } else if (!b.resena || b.resena === '') {
+    resenaDiv.innerHTML = `<p class="resena-loading" style="font-size:.85rem;color:var(--muted);margin-top:.75rem;">
+      <span class="resena-spinner"></span> Generando reseña con IA…</p>`;
+    try {
+      const text = await generarResena(b.title, b.author, b.genre);
+      if (text) {
+        resenaDiv.innerHTML = `<p style="font-size:.88rem;line-height:1.6;color:var(--muted);margin-top:.75rem;">${esc(text)}</p>`;
+        await updateDoc(doc(db, "books", firebaseId), { resena: text });
+      } else {
+        resenaDiv.innerHTML = '';
+      }
+    } catch {
+      resenaDiv.innerHTML = '';
+    }
+  } else {
+    resenaDiv.innerHTML = '';
+  }
+
+  document.getElementById('bookDetailModal').classList.add('visible');
+};
+
+document.getElementById('closeDetailBtn').addEventListener('click', () => {
+  document.getElementById('bookDetailModal').classList.remove('visible');
+});
+document.getElementById('bookDetailModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('bookDetailModal'))
+    document.getElementById('bookDetailModal').classList.remove('visible');
+});
+
+/* ══════════════════════════════
+   FILTROS
+══════════════════════════════ */
+document.getElementById('searchInput').addEventListener('input', () => { currentPage = 1; renderBooks(); });
+document.getElementById('filterStatus').addEventListener('change', () => { currentPage = 1; renderBooks(); });
+document.getElementById('filterGenre').addEventListener('change', () => { currentPage = 1; renderBooks(); });
+document.getElementById('sortBy').addEventListener('change', () => { currentPage = 1; renderBooks(); });
+
+
+/* ══════════════════════════════
+   RENDER: GÉNEROS
+══════════════════════════════ */
+function populateGenreFilter() {
+  const genres = [...new Set(books.map(b => b.genre))].sort();
+  const sel    = document.getElementById('filterGenre');
+  const cur    = sel.value;
+  sel.innerHTML = '<option value="all">Todos los géneros</option>';
+  genres.forEach(g => {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = g;
+    if (g === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+/* ══════════════════════════════
+   RENDER: ESTADÍSTICAS
+══════════════════════════════ */
+function renderStats() {
+  const total = books.length;
+  const avail = books.filter(b => b.status === 'disponible').length;
+  const lent  = books.filter(b => b.status === 'prestado').length;
+  const ov    = books.filter(b => isOverdue(b)).length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="num">${total}</div><div class="label">Total libros</div></div>
+    <div class="stat-card"><div class="num">${avail}</div><div class="label">Disponibles</div></div>
+    <div class="stat-card"><div class="num">${lent}</div> <div class="label">En préstamo</div></div>
+    ${ov ? `<div class="stat-card"><div class="num" style="color:var(--danger)">${ov}</div><div class="label">Vencidos</div></div>` : ''}`;
+}
+
+/* ══════════════════════════════
+   RENDER: CATÁLOGO PÚBLICO (con paginación)
+══════════════════════════════ */
+function renderBooks() {
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('filterStatus').value;
+  const genre  = document.getElementById('filterGenre').value;
+  const sort   = document.getElementById('sortBy').value;
+  const grid   = document.getElementById('booksGrid');
+
+  filteredBooks = books.filter(b => {
+    const mq = b.title.toLowerCase().includes(q)
+             || b.author.toLowerCase().includes(q)
+             || (b.isbn || '').toLowerCase().includes(q);
+    return mq && (status === 'all' || b.status === status)
+               && (genre  === 'all' || b.genre  === genre);
+  });
+
+  filteredBooks.sort((a, b) => {
+    if (sort === 'title')      return a.title.localeCompare(b.title);
+    if (sort === 'title-desc') return b.title.localeCompare(a.title);
+    if (sort === 'author')     return a.author.localeCompare(b.author);
+    if (sort === 'year-desc')  return (b.year || 0) - (a.year || 0);
+    if (sort === 'year-asc')   return (a.year || 0) - (b.year || 0);
+    return 0;
+  });
+
+  if (!filteredBooks.length) {
+    grid.innerHTML = '<div class="no-results">📭 No se encontraron libros.</div>';
+    document.getElementById('pagination').innerHTML = '';
+    return;
+  }
+
+  const totalPages = Math.ceil(filteredBooks.length / PAGE_SIZE);
+  if (currentPage > totalPages) currentPage = totalPages;
+
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const page  = filteredBooks.slice(start, start + PAGE_SIZE);
+
+  grid.innerHTML = page.map(b => {
+    const ov          = isOverdue(b);
+    const ev          = estadoVencimiento(b);
+    const bc          = b.status === 'disponible' ? 'badge-avail' : (ov ? 'badge-overdue' : 'badge-lend');
+    const bt          = b.status === 'disponible' ? '✓ Disponible' : (ov ? '⚠️ Vencido' : '⏳ En préstamo');
+    const { disponibles, total } = copiasDisponibles(books, b);
+    const copiasStr   = total > 1
+      ? `<div class="book-copies">📦 ${disponibles}/${total} copias disponibles</div>`
+      : '';
+    const vencePronto = ev === 'urgent' ? '<div class="book-copies" style="color:var(--danger)">🔔 Vence muy pronto</div>' : '';
+    const colorSeguro = isValidColor(b.color) ? b.color : '#008f39';
+    return `
+      <div class="book-card" onclick="openBookDetail('${b.firebaseId}')" role="listitem" tabindex="0"
+           onkeydown="if(event.key==='Enter') openBookDetail('${b.firebaseId}')">
+        <div class="book-spine" style="background:${colorSeguro};">
+          <div class="book-spine-title">${esc(b.title)}</div>
+        </div>
+        <div class="book-info">
+          <div class="book-title">${esc(b.title)}</div>
+          <div class="book-author">${esc(b.author)}</div>
+          <div class="book-genre">${esc(b.genre)} · ${b.year}</div>
+          ${copiasStr}${vencePronto}
+          <span class="badge ${bc}">${bt}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  renderPagination(totalPages);
+}
+
+/* ══════════════════════════════
+   RENDER: PAGINACIÓN
+══════════════════════════════ */
+function renderPagination(totalPages) {
+  const pag = document.getElementById('pagination');
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  let html = '';
+  html += `<button class="pag-btn" onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>`;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+      html += `<button class="pag-btn ${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+    } else if (i === currentPage - 3 || i === currentPage + 3) {
+      html += `<span class="pag-ellipsis">…</span>`;
+    }
+  }
+
+  html += `<button class="pag-btn" onclick="goPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>`;
+  pag.innerHTML = html;
+}
+
+window.goPage = function(page) {
+  const totalPages = Math.ceil(filteredBooks.length / PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  renderBooks();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+/* ══════════════════════════════
+   REFRESH GLOBAL
+══════════════════════════════ */
+function refresh() {
+  populateGenreFilter();
+  renderStats();
+  renderBooks();
+}
+
+/* Escape cierra modales */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape')
+    document.querySelectorAll('.modal-overlay.visible').forEach(m => m.classList.remove('visible'));
+});
+
+</script>
+</body>
+</html>
