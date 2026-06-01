@@ -3,13 +3,8 @@
  *  Librería CBTis 198 — Validaciones y utilidades
  *  Archivo: Validaciones.js  (V mayúscula — importante en Linux)
  *
- *  v3.0 — Mejoras aplicadas:
- *    · validarRenovacion: valida extensión de fecha de devolución
- *    · validarImportacion: valida fila de Excel importado
- *    · diasParaVencer: días restantes antes de vencer un préstamo
- *    · estadoVencimiento: clasifica proximidad al vencimiento
- *    · buildResumenAlumno: construye HTML de resumen de alumno (sin duplicar en Index y Admin)
- *    · renderHistorialItems / renderMultasItems: renderers compartidos
+ *  v3.1 — Correcciones aplicadas:
+ *    · validarFilaImportacion: eliminada clave duplicada 'Año'
  * ═══════════════════════════════════════════════════
  */
 
@@ -94,10 +89,11 @@ export function validarRenovacion({ nuevaFecha, fechaActual }) {
  */
 export function validarFilaImportacion(row, rowIndex) {
   const title  = String(row['Título'] || row['Titulo'] || row['title'] || '').trim();
-  const author = String(row['Autor'] || row['author'] || '').trim();
-  const year   = parseInt(row['Año'] || row['Año'] || row['year'] || 0);
+  const author = String(row['Autor']  || row['author'] || '').trim();
+  // CORRECCIÓN: se eliminó la clave 'Año' duplicada
+  const year   = parseInt(row['Año']  || row['year'] || 0);
   const genre  = String(row['Género'] || row['Genero'] || row['genre'] || 'General').trim();
-  const isbn   = String(row['ISBN'] || row['isbn'] || '').trim();
+  const isbn   = String(row['ISBN']   || row['isbn'] || '').trim();
   const copies = parseInt(row['Ejemplares'] || row['copies'] || 1);
   const multa  = parseFloat(row['Multa/día'] || row['Multa'] || row['multaDiaria'] || 2);
 
