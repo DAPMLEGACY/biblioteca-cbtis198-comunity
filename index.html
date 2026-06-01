@@ -58,8 +58,6 @@
   </div>
 </header>
 
-
-
 <!-- ══════════════════════════════════════════
      BARRA DE BÚSQUEDA Y FILTROS
 ══════════════════════════════════════════ -->
@@ -127,9 +125,10 @@ import {
   getFirestore, collection, onSnapshot, updateDoc, doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* CORRECCIÓN: se añadió setBtnLoading a los imports; se eliminó getAuth (no se usa en index) */
 import {
   isValidColor, today, isOverdue, estadoVencimiento,
-  copiasDisponibles, esc, rgbToHex, showToast
+  copiasDisponibles, esc, rgbToHex, showToast, setBtnLoading
 } from './Validaciones.js';
 
 /* ══════════════════════════════
@@ -143,9 +142,9 @@ const firebaseConfig = {
   messagingSenderId: "629699951264",
   appId:             "1:629699951264:web:b15799c447903b880367c5"
 };
-const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
-const auth = getAuth(app);
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+/* CORRECCIÓN: eliminado "const auth = getAuth(app)" — getAuth no se importa ni se usa en index */
 
 /* URL del proxy PHP que oculta la API Key de Anthropic */
 const RESENA_API_URL = './api/Resena.php';
@@ -153,35 +152,16 @@ const RESENA_API_URL = './api/Resena.php';
 /* ══════════════════════════════
    ESTADO GLOBAL
 ══════════════════════════════ */
-let books       = [];
+let books = [];
 
 /* Paginación */
 const PAGE_SIZE = 20;
-let currentPage = 1;
+let currentPage   = 1;
 let filteredBooks = [];
 
-/* Importación */
-let importRows = [];
-
-/* Año máximo dinámico */
-document.getElementById('newYear').max = new Date().getFullYear() + 1;
-
 /* ══════════════════════════════
-   COLOR PICKER SINCRONIZADO
+   NAVEGACIÓN A ADMIN
 ══════════════════════════════ */
-document.getElementById('newColorPicker').addEventListener('input', e => {
-  document.getElementById('newColorText').value = e.target.value;
-});
-document.getElementById('newColorText').addEventListener('input', e => {
-  const val = e.target.value.trim();
-  if (val && isValidColor(val)) {
-    const h = rgbToHex(val);
-    if (h) document.getElementById('newColorPicker').value = h;
-  }
-});
-
-
-
 document.getElementById('adminToggleBtn').addEventListener('click', () => {
   window.location.href = 'admin.html';
 });
@@ -195,8 +175,6 @@ onSnapshot(collection(db, "books"), snap => {
 }, () => {
   document.getElementById('networkError').classList.add('visible');
 });
-
-
 
 /* ══════════════════════════════
    RESEÑA CON IA — via proxy PHP (oculta la API Key del cliente)
@@ -212,27 +190,8 @@ async function generarResena(title, author, genre) {
   return data.resena?.trim() || '';
 }
 
-document.getElementById('btnGenerarResena').addEventListener('click', async () => {
-  const title  = document.getElementById('newTitle').value.trim();
-  const author = document.getElementById('newAuthor').value.trim();
-  const genre  = document.getElementById('newGenre').value.trim();
-  if (!title || !author) { showToast('Escribe el título y autor primero.', 'err'); return; }
-
-  const btn = document.getElementById('btnGenerarResena');
-  setBtnLoading(btn, true, '✨ Generando...');
-  try {
-    const text = await generarResena(title, author, genre);
-    if (text) { document.getElementById('newResena').value = text; showToast('✅ Reseña generada.'); }
-    else showToast('No se pudo generar la reseña.', 'err');
-  } catch (e) {
-    showToast('❌ Error al generar la reseña.', 'err');
-  } finally {
-    setBtnLoading(btn, false, '✨ Generar con IA');
-  }
-});
-
 /* ══════════════════════════════
-   MODAL: DETALLE / RESEÑA (con generación automática de reseña)
+   MODAL: DETALLE / RESEÑA
 ══════════════════════════════ */
 window.openBookDetail = async function (firebaseId) {
   const b = books.find(x => x.firebaseId === firebaseId);
@@ -290,11 +249,10 @@ document.getElementById('bookDetailModal').addEventListener('click', e => {
 /* ══════════════════════════════
    FILTROS
 ══════════════════════════════ */
-document.getElementById('searchInput').addEventListener('input', () => { currentPage = 1; renderBooks(); });
+document.getElementById('searchInput').addEventListener('input',  () => { currentPage = 1; renderBooks(); });
 document.getElementById('filterStatus').addEventListener('change', () => { currentPage = 1; renderBooks(); });
-document.getElementById('filterGenre').addEventListener('change', () => { currentPage = 1; renderBooks(); });
-document.getElementById('sortBy').addEventListener('change', () => { currentPage = 1; renderBooks(); });
-
+document.getElementById('filterGenre').addEventListener('change',  () => { currentPage = 1; renderBooks(); });
+document.getElementById('sortBy').addEventListener('change',       () => { currentPage = 1; renderBooks(); });
 
 /* ══════════════════════════════
    RENDER: GÉNEROS
