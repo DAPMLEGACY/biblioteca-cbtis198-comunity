@@ -146,9 +146,6 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 /* CORRECCIÓN: eliminado "const auth = getAuth(app)" — getAuth no se importa ni se usa en index */
 
-/* URL del proxy PHP que oculta la API Key de Anthropic */
-const RESENA_API_URL = './api/Resena.php';
-
 /* ══════════════════════════════
    ESTADO GLOBAL
 ══════════════════════════════ */
@@ -177,20 +174,6 @@ onSnapshot(collection(db, "books"), snap => {
 });
 
 /* ══════════════════════════════
-   RESEÑA CON IA — via proxy PHP (oculta la API Key del cliente)
-══════════════════════════════ */
-async function generarResena(title, author, genre) {
-  const response = await fetch(RESENA_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, author, genre })
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
-  return data.resena?.trim() || '';
-}
-
-/* ══════════════════════════════
    MODAL: DETALLE / RESEÑA
 ══════════════════════════════ */
 window.openBookDetail = async function (firebaseId) {
@@ -217,20 +200,6 @@ window.openBookDetail = async function (firebaseId) {
 
   if (b.resena && b.resena !== 'FAILED') {
     resenaDiv.innerHTML = `<p style="font-size:.88rem;line-height:1.6;color:var(--muted);margin-top:.75rem;">${esc(b.resena)}</p>`;
-  } else if (!b.resena || b.resena === '') {
-    resenaDiv.innerHTML = `<p class="resena-loading" style="font-size:.85rem;color:var(--muted);margin-top:.75rem;">
-      <span class="resena-spinner"></span> Generando reseña con IA…</p>`;
-    try {
-      const text = await generarResena(b.title, b.author, b.genre);
-      if (text) {
-        resenaDiv.innerHTML = `<p style="font-size:.88rem;line-height:1.6;color:var(--muted);margin-top:.75rem;">${esc(text)}</p>`;
-        await updateDoc(doc(db, "books", firebaseId), { resena: text });
-      } else {
-        resenaDiv.innerHTML = '';
-      }
-    } catch {
-      resenaDiv.innerHTML = '';
-    }
   } else {
     resenaDiv.innerHTML = '';
   }
