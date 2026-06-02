@@ -283,8 +283,55 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
             <input type="text"  id="newColorText"   placeholder="o escribe el color (ej. royalblue, #2d4a3e)">
           </div>
           <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem;">Reseña del libro</label>
-            <textarea id="newResena" placeholder="Escribe una reseña del libro (opcional)..."></textarea>
+          <textarea id="newResena" placeholder="Escribe una reseña del libro (opcional)..." style="width:100%;padding:.55rem .85rem;border:1px solid var(--border);border-radius:7px;font-family:'DM Sans',sans-serif;font-size:.9rem;background:var(--surface);color:var(--text);resize:vertical;min-height:80px;margin-bottom:.75rem;"></textarea>
           <button class="btn-primary" id="btnAgregar">Agregar libro</button>
+        </div>
+
+        <!-- Importar desde Excel -->
+        <div class="admin-form" style="margin-top:1.5rem;">
+          <h4>📥 Importar libros desde Excel</h4>
+          <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;">
+            Sube un archivo <strong>.xlsx</strong> con las columnas:
+            <code>Título</code>, <code>Autor</code>, <code>Año</code>, <code>Género</code>, <code>ISBN</code>, <code>Ejemplares</code>, <code>Multa/día</code>.
+            Solo son obligatorias las tres primeras.
+          </p>
+
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;">
+            <label class="btn-export" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+              📂 Seleccionar archivo
+              <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;">
+            </label>
+            <button class="btn-export" id="btnDescargarPlantilla">📄 Descargar plantilla</button>
+          </div>
+
+          <!-- Vista previa -->
+          <div id="importPreview" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem;">
+              <span id="importResumen" style="font-size:.88rem;color:var(--muted);"></span>
+              <div style="display:flex;gap:.5rem;">
+                <button class="btn-cancel" id="btnCancelarImport">Cancelar</button>
+                <button class="btn-primary" id="btnConfirmarImport">✅ Importar todos</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table id="importTable" style="width:100%;border-collapse:collapse;font-size:.82rem;">
+                <thead>
+                  <tr style="background:var(--surface-alt,var(--surface));text-align:left;">
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">#</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Título</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Autor</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Año</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Género</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">ISBN</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Ejemplares</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Multa/día</th>
+                    <th style="padding:.4rem .6rem;border-bottom:1px solid var(--border);">Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="importTableBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -616,6 +663,158 @@ document.getElementById('btnAgregar').addEventListener('click', async () => {
     showToast('✅ Libro agregado correctamente.');
   } catch(e) { console.error('[addDoc books]', e); showToast('❌ Error al agregar el libro.', 'err'); }
   finally { setBtnLoading(btn, false, 'Agregar libro'); }
+});
+
+/* ══ IMPORTAR EXCEL ══ */
+
+let importRowsData = []; // filas válidas listas para subir
+
+/* — Descargar plantilla — */
+document.getElementById('btnDescargarPlantilla').addEventListener('click', () => {
+  const plantilla = [
+    { 'Título': 'El principito', 'Autor': 'Antoine de Saint-Exupéry', 'Año': 1943, 'Género': 'Literatura', 'ISBN': '978-0156012195', 'Ejemplares': 2, 'Multa/día': 2 },
+    { 'Título': 'Cien años de soledad', 'Autor': 'Gabriel García Márquez', 'Año': 1967, 'Género': 'Novela', 'ISBN': '', 'Ejemplares': 1, 'Multa/día': 2 },
+  ];
+  const ws = XLSX.utils.json_to_sheet(plantilla);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Libros');
+  XLSX.writeFile(wb, 'plantilla_libros_cbtis198.xlsx');
+  showToast('📄 Plantilla descargada.');
+});
+
+/* — Leer archivo Excel — */
+document.getElementById('importFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb   = XLSX.read(ev.target.result, { type: 'binary' });
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!rows.length) { showToast('El archivo está vacío.', 'err'); return; }
+
+      importRowsData = [];
+      const tbody = document.getElementById('importTableBody');
+      tbody.innerHTML = '';
+
+      let validos = 0, errores = 0;
+
+      rows.forEach((row, i) => {
+        const { validarFilaImportacion } = window._validaciones || {};
+        // Parsear manualmente (validarFilaImportacion viene de Validaciones.js)
+        const title  = String(row['Título']  || row['Titulo']  || row['title']  || '').trim();
+        const author = String(row['Autor']   || row['author']  || '').trim();
+        const year   = parseInt(row['Año']   || row['year']    || 0);
+        const genre  = String(row['Género']  || row['Genero']  || row['genre']  || 'General').trim();
+        const isbn   = String(row['ISBN']    || row['isbn']    || '').trim();
+        const copies = parseInt(row['Ejemplares'] || row['copies'] || 1);
+        const multa  = parseFloat(row['Multa/día'] || row['Multa'] || row['multaDiaria'] || 2);
+        const maxYear = new Date().getFullYear() + 1;
+
+        let error = '';
+        if (!title)                         error = '⚠️ Sin título';
+        else if (!author)                   error = '⚠️ Sin autor';
+        else if (!year || year < 1800 || year > maxYear) error = '⚠️ Año inválido';
+
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid var(--border)';
+        if (error) {
+          tr.style.background = 'rgba(220,38,38,.08)';
+          errores++;
+        } else {
+          validos++;
+          importRowsData.push({
+            title, author, year,
+            genre: genre || 'General',
+            isbn:  isbn  || '',
+            copies: isNaN(copies) || copies < 1 ? 1 : copies,
+            multaDiaria: isNaN(multa) || multa < 0 ? 2 : multa,
+            status: 'disponible',
+          });
+        }
+
+        tr.innerHTML = `
+          <td style="padding:.35rem .6rem;">${i + 1}</td>
+          <td style="padding:.35rem .6rem;">${esc(title) || '<span style="color:var(--danger)">—</span>'}</td>
+          <td style="padding:.35rem .6rem;">${esc(author) || '<span style="color:var(--danger)">—</span>'}</td>
+          <td style="padding:.35rem .6rem;">${year || '—'}</td>
+          <td style="padding:.35rem .6rem;">${esc(genre)}</td>
+          <td style="padding:.35rem .6rem;">${esc(isbn) || '—'}</td>
+          <td style="padding:.35rem .6rem;">${isNaN(copies) ? 1 : copies}</td>
+          <td style="padding:.35rem .6rem;">$${isNaN(multa) ? 2 : multa}</td>
+          <td style="padding:.35rem .6rem;">${error ? `<span style="color:var(--danger);font-size:.8rem;">${error}</span>` : '<span style="color:var(--success)">✅ OK</span>'}</td>`;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('importResumen').textContent =
+        `${rows.length} filas leídas — ✅ ${validos} válidas, ❌ ${errores} con error`;
+      document.getElementById('importPreview').style.display = 'block';
+
+      if (!validos) {
+        document.getElementById('btnConfirmarImport').disabled = true;
+        showToast('No hay filas válidas para importar.', 'err');
+      } else {
+        document.getElementById('btnConfirmarImport').disabled = false;
+      }
+    } catch(err) {
+      console.error('[importExcel]', err);
+      showToast('❌ Error al leer el archivo. ¿Es un .xlsx válido?', 'err');
+    }
+  };
+  reader.readAsBinaryString(file);
+  e.target.value = ''; // permite volver a seleccionar el mismo archivo
+});
+
+/* — Cancelar importación — */
+document.getElementById('btnCancelarImport').addEventListener('click', () => {
+  importRowsData = [];
+  document.getElementById('importTableBody').innerHTML = '';
+  document.getElementById('importPreview').style.display = 'none';
+  showToast('Importación cancelada.');
+});
+
+/* — Confirmar importación — */
+document.getElementById('btnConfirmarImport').addEventListener('click', async () => {
+  if (!importRowsData.length) return;
+
+  const ok = await confirmar(
+    `¿Importar ${importRowsData.length} libro(s) a Firestore?`,
+    'Importar', 'warn'
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btnConfirmarImport');
+  setBtnLoading(btn, true, '✅ Importar todos');
+
+  let subidos = 0, fallidos = 0;
+  for (const libro of importRowsData) {
+    try {
+      await addDoc(collection(db, 'books'), {
+        ...libro,
+        resena: '',
+        color: '#008f39',
+        createdAt: serverTimestamp(),
+      });
+      subidos++;
+    } catch(e) {
+      console.error('[importar libro]', e, libro);
+      fallidos++;
+    }
+  }
+
+  setBtnLoading(btn, false, '✅ Importar todos');
+  importRowsData = [];
+  document.getElementById('importTableBody').innerHTML = '';
+  document.getElementById('importPreview').style.display = 'none';
+
+  if (fallidos === 0) {
+    showToast(`✅ ${subidos} libro(s) importados correctamente.`);
+  } else {
+    showToast(`⚠️ ${subidos} importados, ${fallidos} fallaron.`, 'warn');
+  }
 });
 
 /* ══ ELIMINAR ══ */
