@@ -58,6 +58,8 @@
   </div>
 </header>
 
+
+
 <!-- ══════════════════════════════════════════
      BARRA DE BÚSQUEDA Y FILTROS
 ══════════════════════════════════════════ -->
@@ -125,7 +127,6 @@ import {
   getFirestore, collection, onSnapshot, updateDoc, doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* CORRECCIÓN: se añadió setBtnLoading a los imports; se eliminó getAuth (no se usa en index) */
 import {
   isValidColor, today, isOverdue, estadoVencimiento,
   copiasDisponibles, esc, rgbToHex, showToast, setBtnLoading
@@ -142,10 +143,8 @@ const firebaseConfig = {
   messagingSenderId: "629699951264",
   appId:             "1:629699951264:web:b15799c447903b880367c5"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-/* CORRECCIÓN: eliminado "const auth = getAuth(app)" — getAuth no se importa ni se usa en index */
-
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
 /* ══════════════════════════════
    ESTADO GLOBAL
 ══════════════════════════════ */
@@ -153,12 +152,9 @@ let books = [];
 
 /* Paginación */
 const PAGE_SIZE = 20;
-let currentPage   = 1;
+let currentPage = 1;
 let filteredBooks = [];
 
-/* ══════════════════════════════
-   NAVEGACIÓN A ADMIN
-══════════════════════════════ */
 document.getElementById('adminToggleBtn').addEventListener('click', () => {
   window.location.href = 'admin.html';
 });
@@ -172,6 +168,8 @@ onSnapshot(collection(db, "books"), snap => {
 }, () => {
   document.getElementById('networkError').classList.add('visible');
 });
+
+
 
 /* ══════════════════════════════
    MODAL: DETALLE / RESEÑA
@@ -218,10 +216,11 @@ document.getElementById('bookDetailModal').addEventListener('click', e => {
 /* ══════════════════════════════
    FILTROS
 ══════════════════════════════ */
-document.getElementById('searchInput').addEventListener('input',  () => { currentPage = 1; renderBooks(); });
+document.getElementById('searchInput').addEventListener('input', () => { currentPage = 1; renderBooks(); });
 document.getElementById('filterStatus').addEventListener('change', () => { currentPage = 1; renderBooks(); });
-document.getElementById('filterGenre').addEventListener('change',  () => { currentPage = 1; renderBooks(); });
-document.getElementById('sortBy').addEventListener('change',       () => { currentPage = 1; renderBooks(); });
+document.getElementById('filterGenre').addEventListener('change', () => { currentPage = 1; renderBooks(); });
+document.getElementById('sortBy').addEventListener('change', () => { currentPage = 1; renderBooks(); });
+
 
 /* ══════════════════════════════
    RENDER: GÉNEROS
