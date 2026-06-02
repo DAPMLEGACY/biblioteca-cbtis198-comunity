@@ -265,22 +265,6 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
       <div class="page" id="page-alta">
         <div class="admin-form">
           <h4>➕ Alta de libro</h4>
-
-          <!-- Importar desde Excel -->
-          <div style="background:var(--bg);border:2px dashed var(--border);border-radius:10px;padding:1rem 1.2rem;margin-bottom:1.2rem;">
-            <p style="font-size:.85rem;color:var(--muted);margin-bottom:.6rem;">
-              📥 <strong>Importar libros desde Excel</strong> — usa el mismo formato del inventario exportado
-              (<em>Título, Autor, Género, Año, ISBN, Ejemplares, Multa/día</em>)
-            </p>
-            <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-              <label class="btn-secondary" style="cursor:pointer;padding:.45rem .9rem;font-size:.85rem;border-radius:8px;display:inline-flex;align-items:center;gap:.4rem;">
-                📂 Seleccionar .xlsx
-                <input type="file" id="importExcelInput" accept=".xlsx,.xls" style="display:none;">
-              </label>
-              <span id="importFileName" style="font-size:.82rem;color:var(--muted);">Ningún archivo seleccionado</span>
-            </div>
-          </div>
-
           <div class="form-row">
             <input type="text" id="newTitle"  placeholder="Título del libro">
             <input type="text" id="newAuthor" placeholder="Autor">
@@ -299,10 +283,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
             <input type="text"  id="newColorText"   placeholder="o escribe el color (ej. royalblue, #2d4a3e)">
           </div>
           <label style="font-size:.85rem;color:var(--muted);display:block;margin-bottom:.3rem;">Reseña del libro</label>
-          <div class="resena-gen-row">
-            <textarea id="newResena" placeholder="Escribe o genera una reseña con IA..."></textarea>
-            <button class="btn-ai" id="btnGenerarResena">✨ Generar con IA</button>
-          </div>
+            <textarea id="newResena" placeholder="Escribe una reseña del libro (opcional)..."></textarea>
           <button class="btn-primary" id="btnAgregar">Agregar libro</button>
         </div>
       </div>
@@ -370,37 +351,6 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   </div>
 </div>
 
-<!-- Modal: Importar Excel -->
-<div class="modal-overlay" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
-  <div class="modal" style="max-width:680px;width:95%;">
-    <h3 id="importModalTitle">📥 Importar libros desde Excel</h3>
-    <p id="importModalSummary" style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem;"></p>
-    <div id="importPreviewWrap" style="max-height:320px;overflow-y:auto;margin-bottom:1rem;">
-      <table id="importPreviewTable" style="width:100%;border-collapse:collapse;font-size:.78rem;">
-        <thead>
-          <tr style="position:sticky;top:0;background:var(--surface);">
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">#</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Título</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Autor</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Género</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Año</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">ISBN</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Ej.</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Multa/día</th>
-            <th style="padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--border);color:var(--accent);">Estado</th>
-          </tr>
-        </thead>
-        <tbody id="importPreviewBody"></tbody>
-      </table>
-    </div>
-    <div id="importErrors" style="display:none;background:#fff0f3;border:1px solid #ffc0cb;border-radius:8px;padding:.75rem;margin-bottom:.75rem;font-size:.8rem;color:#c0392b;"></div>
-    <div class="modal-actions">
-      <button class="btn-cancel" id="importCancelBtn">Cancelar</button>
-      <button class="btn-primary" id="importConfirmBtn">✅ Importar todos</button>
-    </div>
-  </div>
-</div>
-
 <!-- Modal: Renovar Préstamo -->
 <div class="modal-overlay" id="renewModal" role="dialog" aria-modal="true" aria-labelledby="renewModalTitle">
   <div class="modal">
@@ -464,9 +414,6 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
-
-/* URL del proxy PHP */
-const RESENA_API_URL = './api/Resena.php';
 
 let books = [], loanHistory = [], pendingLoanId = null, lastLoanData = null;
 let chartGeneros = null, chartMensual = null, chartPopulares = null;
@@ -637,24 +584,6 @@ function renderActivity() {
       <div class="ai-date">${h.action==='prestado'?h.loanDate||'':h.returnDate||''}</div>
     </div>`).join('');
 }
-
-/* ══ GENERAR RESEÑA IA ══ */
-document.getElementById('btnGenerarResena').addEventListener('click', async () => {
-  const title  = document.getElementById('newTitle').value.trim();
-  const author = document.getElementById('newAuthor').value.trim();
-  const genre  = document.getElementById('newGenre').value.trim();
-  if (!title || !author) { showToast('Escribe el título y autor primero.', 'err'); return; }
-  const btn = document.getElementById('btnGenerarResena');
-  setBtnLoading(btn, true, '✨ Generando...');
-  try {
-    const res  = await fetch(RESENA_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title, author, genre }) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.resena) { document.getElementById('newResena').value = data.resena; showToast('✅ Reseña generada.'); }
-    else showToast('No se pudo generar la reseña.', 'err');
-  } catch(e) { console.error('[generarResena]', e); showToast('❌ Error al generar la reseña.', 'err'); }
-  finally { setBtnLoading(btn, false, '✨ Generar con IA'); }
-});
 
 /* ══ AGREGAR LIBRO ══ */
 document.getElementById('btnAgregar').addEventListener('click', async () => {
@@ -955,145 +884,6 @@ document.getElementById('renewConfirmBtn').addEventListener('click', async () =>
     showToast(`🔄 Préstamo renovado hasta ${nuevaFecha}`);
   } catch(e) { console.error('[renewBook]', e); showToast('❌ Error al renovar.', 'err'); }
   finally { setBtnLoading(btn, false, '🔄 Renovar'); }
-});
-
-/* ══ IMPORTAR EXCEL ══ */
-let importBooksData = [];
-
-document.getElementById('importExcelInput').addEventListener('change', async function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  document.getElementById('importFileName').textContent = file.name;
-
-  const reader = new FileReader();
-  reader.onload = function(ev) {
-    try {
-      const wb   = XLSX.read(ev.target.result, { type: 'array' });
-      const ws   = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-      if (!rows.length) { showToast('El archivo está vacío.', 'err'); return; }
-
-      // Mapeo flexible de columnas (acepta tildes o no, mayúsculas/minúsculas)
-      const col = (row, ...keys) => {
-        for (const k of keys) {
-          const found = Object.keys(row).find(rk => rk.trim().toLowerCase() === k.toLowerCase());
-          if (found !== undefined) return String(row[found]).trim();
-        }
-        return '';
-      };
-
-      importBooksData = [];
-      const errors   = [];
-
-      rows.forEach((row, i) => {
-        const titulo  = col(row,'Título','Titulo','title','TITULO');
-        const autor   = col(row,'Autor','author','AUTOR');
-        const genero  = col(row,'Género','Genero','genre','GENERO') || 'General';
-        const anio    = col(row,'Año','Anio','Year','year','AÑO');
-        const isbn    = col(row,'ISBN','isbn');
-        const copias  = parseInt(col(row,'Ejemplares','copies','EJEMPLARES')) || 1;
-        const multa   = parseFloat(col(row,'Multa/día','Multa/dia','multaDiaria','Multa dia')) || 2;
-
-        if (!titulo) { errors.push(`Fila ${i+2}: Título vacío — se omite.`); return; }
-        if (!autor)  { errors.push(`Fila ${i+2}: Autor vacío (${titulo}) — se omite.`); return; }
-
-        importBooksData.push({ titulo, autor, genero, anio, isbn, copias, multa });
-      });
-
-      // Mostrar errores si los hay
-      const errDiv = document.getElementById('importErrors');
-      if (errors.length) {
-        errDiv.style.display = 'block';
-        errDiv.innerHTML = '<strong>⚠️ Filas omitidas:</strong><br>' + errors.join('<br>');
-      } else {
-        errDiv.style.display = 'none';
-      }
-
-      // Resumen
-      document.getElementById('importModalSummary').textContent =
-        `Se encontraron ${importBooksData.length} libro(s) listos para importar` +
-        (errors.length ? ` (${errors.length} filas con error omitidas)` : '') + '.';
-
-      // Tabla preview
-      const tbody = document.getElementById('importPreviewBody');
-      tbody.innerHTML = importBooksData.map((b, i) => `
-        <tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':''}">
-          <td style="padding:.35rem .5rem;color:var(--muted);">${i+1}</td>
-          <td style="padding:.35rem .5rem;font-weight:500;">${esc(b.titulo)}</td>
-          <td style="padding:.35rem .5rem;">${esc(b.autor)}</td>
-          <td style="padding:.35rem .5rem;">${esc(b.genero)}</td>
-          <td style="padding:.35rem .5rem;">${esc(b.anio)}</td>
-          <td style="padding:.35rem .5rem;color:var(--muted);">${esc(b.isbn)||'—'}</td>
-          <td style="padding:.35rem .5rem;">${b.copias}</td>
-          <td style="padding:.35rem .5rem;">$${b.multa}</td>
-          <td style="padding:.35rem .5rem;"><span class="badge badge-avail" style="font-size:.7rem;">Disponible</span></td>
-        </tr>`).join('');
-
-      if (importBooksData.length > 0) {
-        document.getElementById('importModal').classList.add('visible');
-      } else {
-        showToast('No se encontraron filas válidas para importar.', 'err');
-      }
-
-    } catch(err) {
-      console.error('[importExcel]', err);
-      showToast('❌ No se pudo leer el archivo Excel.', 'err');
-    }
-  };
-  reader.readAsArrayBuffer(file);
-  // Reset input para permitir reimportar el mismo archivo
-  this.value = '';
-});
-
-document.getElementById('importCancelBtn').addEventListener('click', () => {
-  document.getElementById('importModal').classList.remove('visible');
-  document.getElementById('importFileName').textContent = 'Ningún archivo seleccionado';
-  importBooksData = [];
-});
-document.getElementById('importModal').addEventListener('click', e => {
-  if (e.target === document.getElementById('importModal')) {
-    document.getElementById('importModal').classList.remove('visible');
-    importBooksData = [];
-  }
-});
-
-document.getElementById('importConfirmBtn').addEventListener('click', async () => {
-  if (!importBooksData.length) return;
-  const btn = document.getElementById('importConfirmBtn');
-  setBtnLoading(btn, true, 'Importando...');
-
-  let ok = 0, fail = 0;
-  for (const b of importBooksData) {
-    try {
-      await addDoc(collection(db, 'books'), {
-        title:       b.titulo,
-        author:      b.autor,
-        genre:       b.genero || 'General',
-        year:        parseInt(b.anio) || 0,
-        isbn:        b.isbn || '',
-        copies:      b.copias,
-        multaDiaria: b.multa,
-        resena:      '',
-        color:       '#008f39',
-        status:      'disponible',
-        createdAt:   serverTimestamp()
-      });
-      ok++;
-    } catch(err) {
-      console.error('[importBook]', err);
-      fail++;
-    }
-  }
-
-  document.getElementById('importModal').classList.remove('visible');
-  document.getElementById('importFileName').textContent = 'Ningún archivo seleccionado';
-  importBooksData = [];
-  setBtnLoading(btn, false, '✅ Importar todos');
-
-  if (fail === 0) showToast(`✅ ${ok} libro(s) importados correctamente.`);
-  else showToast(`⚠️ ${ok} importados, ${fail} fallaron.`, 'err');
 });
 
 /* ══ ESCAPE / CLICK FUERA ══ */
